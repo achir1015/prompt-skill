@@ -1,4 +1,4 @@
-# prompt-skill
+# prompt-skill    https://achir1015.github.io/prompt-skill/
 以長照為主題、整合 NotebookLM 資料來源，並引導至 Gemini Pro Canvas 的簡報提示詞產生器。
 📋 功能架構
 左側面板（設定區）
