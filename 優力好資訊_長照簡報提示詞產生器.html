@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>優力好資訊｜長照簡報提示詞產生器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 細滾動條樣式 */
+        .scrollbar-thin::-webkit-scrollbar { width: 5px; height: 5px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #b2dfdb; border-radius: 10px; }
+
+        /* 分隔線拖曳 */
+        #resizer:hover { background-color: #0d9488; }
+
+        /* 選項按鈕基本樣式 */
+        .selection-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 22pt;
+            padding: 6px 14px;
+        }
+        .selection-btn.active {
+            border-color: #0d9488;
+            background-color: #e6fffa;
+            color: #0f766e;
+            font-weight: bold;
+            box-shadow: 0 1px 3px rgba(13,148,136,0.15);
+        }
+        .selection-btn:not(.active):not(.clear-btn) {
+            border-color: #e2e8f0;
+            background-color: #ffffff;
+            color: #64748b;
+        }
+        .selection-btn:not(.active):not(.clear-btn):hover {
+            border-color: #0d9488;
+            background-color: #f0fdfa;
+            color: #0f766e;
+        }
+
+        /* 清除按鈕 */
+        .clear-btn {
+            background-color: #f97316 !important;
+            color: white !important;
+            border-color: #f97316 !important;
+            font-weight: bold;
+        }
+        .clear-btn:hover {
+            background-color: #ea580c !important;
+            border-color: #ea580c !important;
+        }
+
+        /* 智慧建議開關 */
+        .smart-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            color: #0d9488;
+            font-weight: bold;
+        }
+        .smart-toggle input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #0d9488;
+        }
+
+        body { font-size: 22pt; }
+
+        /* 投影片數量滑桿 */
+        input[type="range"] {
+            accent-color: #0d9488;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        /* Gemini 引導步驟 */
+        .step-badge {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #0d9488;
+            color: white;
+            font-size: 20pt;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* 品牌標題漸層 */
+        .brand-gradient {
+            background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* 脈動動畫 (Gemini 按鈕) */
+        @keyframes pulse-teal {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(13,148,136,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(13,148,136,0); }
+        }
+        .gemini-btn { animation: pulse-teal 2.5s infinite; }
+    </style>
+</head>
+
+<body class="h-screen bg-slate-50 flex flex-col font-sans text-slate-900 overflow-hidden">
+
+    <!-- ===== Header ===== -->
+    <header class="shrink-0 py-2 px-4 border-b border-teal-100 bg-white z-10 shadow-sm">
+        <div class="max-w-full mx-auto flex items-center justify-between gap-3">
+
+            <!-- 品牌名稱 + 工具名稱 -->
+            <h1 class="text-base font-black flex items-center gap-2 flex-nowrap">
+                <!-- 品牌標誌 -->
+                <span class="bg-gradient-to-r from-teal-600 to-cyan-600 text-white px-2 py-0.5 rounded text-[22pt] tracking-tight shadow-sm whitespace-nowrap">
+                    優力好資訊
+                </span>
+                <span class="text-slate-700 whitespace-nowrap">長照簡報提示詞產生器</span>
+                <span class="text-[20pt] text-slate-400 font-normal">V1.0</span>
+            </h1>
+
+            <!-- 右側：NotebookLM 連結 + 重置 -->
+            <div class="flex items-center gap-2 shrink-0">
+                <a href="https://notebooklm.google.com/notebook/8e35c15c-be6b-44fe-8db2-478c6426d39c"
+                   target="_blank"
+                   class="text-[20pt] font-bold text-cyan-700 hover:text-cyan-900 border border-cyan-200 bg-cyan-50 px-2 py-1 rounded transition-all flex items-center gap-1">
+                    <i data-lucide="database" class="w-3.5 h-3.5"></i> NotebookLM 資料源
+                </a>
+                <button id="reset-all-btn"
+                        class="text-[22pt] font-bold text-red-500 hover:text-red-700 border border-red-100 bg-red-50 px-2 py-1 rounded transition-all active:scale-95 flex items-center gap-1">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> 重置所有設定
+                </button>
+            </div>
+        </div>
+    </header>
+
+
+    <!-- ===== Main Content ===== -->
+    <main class="flex-grow flex flex-nowrap overflow-hidden p-2 gap-0" id="container">
+
+        <!-- ── 左側面板：設定區 ── -->
+        <div id="left-panel"
+             class="h-full flex flex-col shrink-0 overflow-hidden border border-slate-200 rounded-l-lg bg-white shadow-sm"
+             style="flex-basis: 55%;">
+            <div class="flex-grow overflow-y-auto p-3 scrollbar-thin">
+                <div class="max-w-2xl mx-auto" id="config-sections">
+
+                    <!-- 簡報主題輸入 -->
+                    <div class="mb-4">
+                        <h3 class="text-[22pt] font-bold text-gray-400 uppercase tracking-widest mb-1 leading-none">
+                            長照簡報主題 / 核心目標
+                        </h3>
+                        <textarea id="title-input" rows="2"
+                            placeholder="例如：如何與失智長輩溝通——給家屬的十個實用技巧..."
+                            class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-[22pt] outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100 transition-all shadow-sm resize-none scrollbar-thin">
+                        </textarea>
+                    </div>
+
+                    <!-- 投影片張數 -->
+                    <div class="mb-4 p-3 bg-teal-50 rounded-lg border border-teal-100">
+                        <div class="flex justify-between items-center mb-1">
+                            <h3 class="text-[22pt] font-bold text-teal-700">
+                                <i data-lucide="layout" class="w-4 h-4 inline-block mr-1"></i>
+                                投影片張數
+                            </h3>
+                            <span id="page-count-label"
+                                  class="text-[22pt] font-black text-teal-700 bg-white border border-teal-200 px-2 py-0.5 rounded-lg min-w-[50px] text-center">
+                                12 張
+                            </span>
+                        </div>
+                        <input type="range" id="page-count" min="6" max="30" value="12" step="1">
+                        <div class="flex justify-between text-[18pt] text-slate-400 mt-0.5">
+                            <span>6 張（精簡）</span>
+                            <span>30 張（詳盡）</span>
+                        </div>
+                    </div>
+
+                    <!-- 動態選項群組 -->
+                    <div id="selection-groups-container" class="space-y-4"></div>
+
+                    <!-- 補充要求 -->
+                    <div class="mt-6 pt-4 border-t border-slate-100">
+                        <h3 class="text-[22pt] font-bold text-gray-400 uppercase mb-1.5 leading-none">
+                            額外要求（指定章節、關鍵字、特殊說明等）
+                        </h3>
+                        <textarea id="custom-notes-input"
+                            placeholder="例如：請特別強調失智照顧中的安全議題，並引用衛福部最新統計數據..."
+                            class="w-full h-24 p-2 rounded-lg border border-slate-200 bg-slate-50 text-[22pt] outline-none focus:border-teal-500 focus:bg-white transition-all resize-none shadow-inner scrollbar-thin">
+                        </textarea>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ── 分隔線 ── -->
+        <div id="resizer"
+             class="w-1 h-full cursor-col-resize transition-colors flex items-center justify-center shrink-0 bg-slate-200 group">
+            <div class="w-[1px] h-12 bg-slate-400 group-hover:bg-teal-400 rounded-full"></div>
+        </div>
+
+
+        <!-- ── 右側面板：提示詞輸出 ── -->
+        <div id="right-panel"
+             class="h-full flex-1 min-w-0 flex flex-col border border-slate-700 rounded-r-lg shadow-xl bg-slate-900">
+
+            <!-- 右側頂列：標題 + 操作按鈕 -->
+            <div class="px-3 py-1.5 bg-slate-800 flex justify-between items-center border-b border-slate-700 shrink-0 gap-2 flex-wrap">
+                <span class="text-[22pt] text-slate-400 font-mono tracking-widest uppercase">
+                    Gemini Prompt · 長照簡報
+                </span>
+                <div class="flex items-center gap-2">
+                    <!-- 複製按鈕 -->
+                    <button id="copy-btn"
+                            class="text-[22pt] font-bold bg-slate-600 hover:bg-slate-500 text-white px-3 py-1 rounded transition-all active:scale-95 shadow flex items-center gap-1">
+                        <i data-lucide="copy" class="w-4 h-4"></i> 複製提示詞
+                    </button>
+                    <!-- 前往 Gemini Pro 按鈕 -->
+                    <a href="https://gemini.google.com/app" target="_blank"
+                       class="gemini-btn text-[22pt] font-bold bg-teal-500 hover:bg-teal-400 text-white px-3 py-1 rounded transition-all active:scale-95 shadow-md flex items-center gap-1">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i> 前往 Gemini Pro →
+                    </a>
+                </div>
+            </div>
+
+            <!-- 提示詞內容 -->
+            <div class="p-5 overflow-y-auto flex-grow font-mono text-[22pt] text-teal-100/90 leading-relaxed scrollbar-thin">
+                <pre id="prompt-output" class="whitespace-pre-wrap"></pre>
+            </div>
+
+            <!-- Gemini 使用步驟引導 -->
+            <div class="bg-slate-800/80 border-t border-slate-700 px-4 py-2 shrink-0">
+                <p class="text-[18pt] text-slate-400 font-bold uppercase tracking-widest mb-1.5">
+                    ✦ 使用步驟（貼入 Gemini Pro Canvas → 匯出 Google 簡報）
+                </p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                    <div class="flex items-center gap-1.5">
+                        <div class="step-badge">1</div>
+                        <span class="text-[20pt] text-slate-300">點「複製提示詞」</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="step-badge">2</div>
+                        <span class="text-[20pt] text-slate-300">點「前往 Gemini Pro →」開新視窗</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="step-badge">3</div>
+                        <span class="text-[20pt] text-slate-300">貼上提示詞並送出</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="step-badge">4</div>
+                        <span class="text-[20pt] text-slate-300">點右上角「Canvas 模式」</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="step-badge">5</div>
+                        <span class="text-[20pt] text-slate-300">選「匯出 → Google 簡報」完成！</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+
+    <!-- ===== Script ===== -->
+    <script>
+        // ────────────────────────────────────────────────────────────
+        // 智慧建議對應表（依簡報類型自動填入常用設定）
+        // ────────────────────────────────────────────────────────────
+        const TYPE_DEFAULTS = {
+            family_edu:   { role: 'social-worker', structure: 'golden-circle', tone: 'empathy',       audience: 'family',    format: 'slide-pages', requirements: ['case-story','visual-suggest','cta'],          wordCount: 'medium' },
+            care_skill:   { role: 'nurse',         structure: 'step-guide',    tone: 'warm',          audience: 'caregiver', format: 'slide-pages', requirements: ['practical','visual-suggest','case-story'],    wordCount: 'long'   },
+            policy:       { role: 'consultant',    structure: 'pyramid',       tone: 'professional',  audience: 'official',  format: 'slide-pages', requirements: ['data-evidence','cta'],                         wordCount: 'medium' },
+            service_intro:{ role: 'manager',       structure: 'aida',          tone: 'accessible',    audience: 'public',    format: 'slide-pages', requirements: ['visual-suggest','resource-list','cta'],        wordCount: 'medium' },
+            case_study:   { role: 'social-worker', structure: 'scqa',          tone: 'empathy',       audience: 'ipteam',    format: 'slide-pages', requirements: ['case-story','data-evidence','practical'],      wordCount: 'long'   },
+            annual_report:{ role: 'manager',       structure: 'pyramid',       tone: 'professional',  audience: 'official',  format: 'slide-pages', requirements: ['data-evidence','visual-suggest'],              wordCount: 'long'   },
+            community:    { role: 'educator',      structure: 'aida',          tone: 'accessible',    audience: 'public',    format: 'slide-pages', requirements: ['case-story','cta','qa'],                       wordCount: 'medium' },
+            ipteam:       { role: 'nurse',         structure: 'scqa',          tone: 'professional',  audience: 'ipteam',    format: 'bullet',      requirements: ['data-evidence','practical'],                   wordCount: 'framework'},
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 主要設定資料（所有選項定義）
+        // ────────────────────────────────────────────────────────────
+        const CONFIG = {
+
+            // 快速預設包（一鍵套用常見情境）
+            quicksets: [
+                { id: 'qs-family',  label: '家屬衛教',   typeId: 'family_edu',    prompt: '' },
+                { id: 'qs-skill',   label: '照顧技巧',   typeId: 'care_skill',    prompt: '' },
+                { id: 'qs-policy',  label: '政策倡議',   typeId: 'policy',        prompt: '' },
+                { id: 'qs-service', label: '服務介紹',   typeId: 'service_intro', prompt: '' },
+                { id: 'qs-case',    label: '個案研討',   typeId: 'case_study',    prompt: '' },
+                { id: 'qs-report',  label: '年度報告',   typeId: 'annual_report', prompt: '' },
+            ],
+
+            // 簡報類型
+            types: [
+                { id: 'family_edu',    label: '家屬衛教說明',   prompt: '你是一位長照衛教設計師。請為家屬設計一份易懂、實用的長照說明簡報。' },
+                { id: 'care_skill',    label: '照顧技巧培訓',   prompt: '你是一位資深長照訓練師。請設計一份循序漸進的照顧技巧培訓簡報。' },
+                { id: 'policy',        label: '政策宣導倡議',   prompt: '你是一位長照政策倡議專家。請規劃一份邏輯嚴密、數據有力的政策說明簡報。' },
+                { id: 'service_intro', label: '服務資源介紹',   prompt: '你是一位長照服務推廣師。請設計一份讓民眾快速了解長照服務的介紹簡報。' },
+                { id: 'case_study',    label: '個案研討分享',   prompt: '你是一位長照個案督導。請規劃一份以個案為核心的研討分享簡報。' },
+                { id: 'annual_report', label: '年度成效報告',   prompt: '你是一位機構管理者。請設計一份以數據為核心、成效導向的年度報告簡報。' },
+                { id: 'community',     label: '社區推廣講座',   prompt: '你是一位社區長照推廣師。請設計一份親切易懂、適合社區民眾的推廣講座簡報。' },
+                { id: 'ipteam',        label: '跨專業團隊會議', prompt: '你是一位長照跨專業協調師。請規劃一份適合專業人員討論的跨團隊會議簡報。' },
+            ],
+
+            // 角色設定
+            roles: [
+                { id: 'consultant',   label: '長照政策顧問', prompt: '你擅長長照政策分析、法規解讀與制度設計。' },
+                { id: 'nurse',        label: '臨床護理師',   prompt: '你擅長長照臨床照護技巧、醫療衛教與多元評估。' },
+                { id: 'social-worker',label: '社工師',       prompt: '你擅長長照資源整合、家庭評估與情緒支持。' },
+                { id: 'manager',      label: '機構管理者',   prompt: '你擅長長照機構營運、品質管控與成效評估。' },
+                { id: 'educator',     label: '衛教推廣師',   prompt: '你擅長將長照知識轉化為容易理解的衛教內容。' },
+                { id: 'ot',           label: '職能治療師',   prompt: '你擅長長照功能評估、輔具應用與生活品質促進。' },
+                { id: 'caremgr',      label: '照顧管理師',   prompt: '你擅長長照評估、個別化照顧計畫與服務媒合。' },
+            ],
+
+            // 邏輯架構
+            structures: [
+                { id: 'pyramid',      label: '金字塔（結論先行）',  prompt: '採取「結論先行」的金字塔原則，先給結論再補充佐證。' },
+                { id: 'scqa',         label: 'SCQA（情境問答）',    prompt: '使用 SCQA 架構：情境→問題→解答→行動。' },
+                { id: 'golden-circle',label: '黃金圈（Why→How→What）', prompt: '從「為什麼長照重要」出發，再說明如何做、做什麼。' },
+                { id: 'problem-solution', label: '問題解決架構',    prompt: '以「照顧困境 → 根本原因 → 解決方案 → 預期成效」編排。' },
+                { id: 'aida',         label: 'AIDA（吸引→行動）',  prompt: '遵循「引起注意 → 產生興趣 → 激發需求 → 促進行動」路徑。' },
+                { id: 'step-guide',   label: '步驟引導（SBS）',     prompt: '依照「準備 → 步驟一 → 步驟二 → … → 注意事項」循序呈現。' },
+            ],
+
+            // 語氣風格
+            tones: [
+                { id: 'warm',         label: '溫暖關懷', prompt: '語氣溫暖、富有關懷感，讓受眾感到被理解與支持。' },
+                { id: 'empathy',      label: '同理理解', prompt: '語氣充滿同理心，貼近照顧者的真實感受與困境。' },
+                { id: 'professional', label: '專業嚴謹', prompt: '語氣嚴謹、邏輯清晰、具有專業權威。' },
+                { id: 'inspiring',    label: '啟發鼓舞', prompt: '語氣充滿希望，帶給受眾力量與信心。' },
+                { id: 'accessible',   label: '親切親民', prompt: '語氣輕鬆易懂，避免艱深術語，讓一般民眾一聽就懂。' },
+                { id: 'objective',    label: '客觀中立', prompt: '採取第三方中立視角，以事實與數據說話。' },
+            ],
+
+            // 目標受眾
+            audiences: [
+                { id: 'family',    label: '家屬照顧者',   prompt: '受眾是家屬照顧者，用「大白話」說明，強調實用技巧與情感支持，避免過多術語。' },
+                { id: 'caregiver', label: '照顧服務員',   prompt: '受眾是照顧服務員，聚焦操作步驟與實務技能，強調安全與尊嚴。' },
+                { id: 'official',  label: '政府官員',     prompt: '受眾是政府官員，跳過執行細節，直擊政策成效、預算效益與風險管理。' },
+                { id: 'medical',   label: '醫療專業人員', prompt: '受眾是醫療專業人員，可使用專業術語，重視臨床實證與跨域合作。' },
+                { id: 'public',    label: '一般民眾',     prompt: '受眾是一般民眾，語氣親民、結合生活情境，提供即學即用的實用知識。' },
+                { id: 'ipteam',    label: '跨專業團隊',   prompt: '受眾是跨專業照護團隊，聚焦協作機制、角色分工與溝通技巧。' },
+                { id: 'elder',     label: '長輩/使用者',  prompt: '受眾是長輩或服務使用者，字體要大、語氣要慢、內容要簡短易記。' },
+            ],
+
+            // 加分項目（可複選）
+            requirements: [
+                { id: 'case-story',     label: '真實案例故事', prompt: '融入一個真實或情境化的案例故事，增加感染力。' },
+                { id: 'data-evidence',  label: '數據佐證',     prompt: '預留「數據佐證」位置，標示需補充的統計數字或研究來源。' },
+                { id: 'visual-suggest', label: '視覺建議',     prompt: '為每張投影片標註建議的視覺呈現方式（圖示、照片、圖表等）。' },
+                { id: 'emotional',      label: '情感連結',     prompt: '在關鍵節點加入情感連結設計，讓受眾感同身受。' },
+                { id: 'cta',            label: '行動呼籲',     prompt: '結尾包含明確的行動呼籲，引導受眾下一步。' },
+                { id: 'resource-list',  label: '資源清單',     prompt: '附上相關長照資源、聯絡管道或參考連結清單。' },
+                { id: 'qa',             label: '常見 Q&A',     prompt: '預設3至5個受眾最常提問的 Q&A。' },
+                { id: 'practical',      label: '實務小技巧',   prompt: '在適當位置插入「實務小技巧」或「照顧提醒」方塊。' },
+            ],
+
+            // 輸出格式
+            formats: [
+                { id: 'slide-pages', label: '簡報分頁',   prompt: '以「投影片 [編號]：[標題] → 重點摘要」格式逐頁呈現。' },
+                { id: 'bullet',      label: '重點條列',   prompt: '以結構化的條列式大綱呈現，含層級縮排。' },
+                { id: 'dual-col',    label: '雙欄對照',   prompt: '使用雙欄表格，左欄「問題/現況」，右欄「解答/對策」。' },
+                { id: 'table',       label: '表格清單',   prompt: '使用 Markdown 表格整理核心論點與對應行動。' },
+                { id: 'framework',   label: '完整框架',   prompt: '輸出包含章節標題、核心論點與關鍵金句的完整內容框架。' },
+            ],
+
+            // 文字量設定
+            wordCounts: [
+                { id: 'short',     label: '精簡 300',  prompt: '每張投影片控制在約 30～50 字。' },
+                { id: 'medium',    label: '中等 600',  prompt: '每張投影片約 50～80 字，含說明與小標。' },
+                { id: 'long',      label: '詳盡 1000', prompt: '提供約 1000 字完整內容，含備課講師備註。' },
+                { id: 'framework', label: '完整框架',  prompt: '輸出包含標題、核心論點與講師備註的完整框架。' },
+            ],
+
+            // 視覺風格
+            visualStyles: [
+                { id: 'warm-care',   label: '溫暖關懷',   visual: '米白或淺橘背景、珊瑚色系點綴、圓潤字體、溫暖手繪插圖風格、具有人情味。' },
+                { id: 'professional',label: '專業機構',   visual: '白底、深藍色系、清晰數據圖表、機構 Logo 位置預留、字級分明且具權威感。' },
+                { id: 'fresh-teal',  label: '清新青綠',   visual: '淺白背景、青綠/薄荷綠色系、現代無襯線字體、自然感圖示、清新舒適。' },
+                { id: 'gov-navy',    label: '政府官方',   visual: '深藍/藏青背景搭配白字、台灣政府標準色、嚴謹排版、正式圖表。' },
+                { id: 'community',   label: '社區親民',   visual: '明亮多彩配色、大字體設計、豐富照片、社區感插圖、活潑易讀。' },
+                { id: 'calm-gray',   label: '沉穩信任',   visual: '淺灰白底、石板灰色系、精準版面、大量留白、具成熟沉穩感。' },
+            ],
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 應用程式狀態
+        // ────────────────────────────────────────────────────────────
+        let state = {
+            smartEnabled: true,      // 預設開啟智慧建議
+            quickset: null,
+            type: null,
+            role: null,
+            structure: null,
+            tone: null,
+            audience: null,
+            format: null,
+            wordCount: null,
+            visualStyle: null,
+            requirements: [],
+            pageCount: 12,
+        };
+        let title = '';
+        let customNotes = '';
+
+        // DOM 元素
+        const selectionGroupsContainer = document.getElementById('selection-groups-container');
+        const titleInput               = document.getElementById('title-input');
+        const customNotesInput         = document.getElementById('custom-notes-input');
+        const promptOutput             = document.getElementById('prompt-output');
+        const copyBtn                  = document.getElementById('copy-btn');
+        const resetAllBtn              = document.getElementById('reset-all-btn');
+        const pageCountInput           = document.getElementById('page-count');
+        const pageCountLabel           = document.getElementById('page-count-label');
+
+        // ────────────────────────────────────────────────────────────
+        // 套用智慧建議預設值
+        // ────────────────────────────────────────────────────────────
+        const applySmartDefaults = (typeId) => {
+            if (!state.smartEnabled) return;
+            const d = TYPE_DEFAULTS[typeId];
+            if (!d) return;
+            state.role       = CONFIG.roles.find(r => r.id === d.role) || null;
+            state.structure  = CONFIG.structures.find(s => s.id === d.structure) || null;
+            state.tone       = CONFIG.tones.find(t => t.id === d.tone) || null;
+            state.audience   = CONFIG.audiences.find(a => a.id === d.audience) || null;
+            state.format     = CONFIG.formats.find(f => f.id === d.format) || null;
+            state.wordCount  = CONFIG.wordCounts.find(w => w.id === d.wordCount) || null;
+            state.requirements = CONFIG.requirements.filter(r => d.requirements.includes(r.id));
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 建立提示詞（核心輸出）
+        // ────────────────────────────────────────────────────────────
+        const buildPrompt = () => {
+            const defaultHeader = '你是一位長期照顧領域的簡報設計專家。請根據以下設定，為我規劃一份專業的長照簡報內容架構。';
+            let p = `${state.type?.prompt || defaultHeader}\n\n`;
+
+            // NotebookLM 資料來源
+            p += `【資料來源】請優先參考以下 NotebookLM 筆記本中的長照相關資料作為內容依據：\n`;
+            p += `https://notebooklm.google.com/notebook/8e35c15c-be6b-44fe-8db2-478c6426d39c\n\n`;
+
+            // 主題
+            if (title.trim()) {
+                p += `# 簡報主題與核心目標\n"${title.trim()}"\n\n`;
+            }
+
+            // 投影片張數
+            p += `# 投影片規格\n共 ${state.pageCount} 張投影片\n\n`;
+
+            // 角色
+            if (state.role)      p += `# 角色設定\n${state.role.prompt}\n\n`;
+
+            // 邏輯架構
+            if (state.structure) p += `# 邏輯架構\n${state.structure.prompt}\n\n`;
+
+            // 策略細節
+            let details = '';
+            if (state.tone)      details += `- 語氣風格：${state.tone.prompt}\n`;
+            if (state.audience)  details += `- 目標受眾：${state.audience.prompt}\n`;
+            if (state.wordCount) details += `- 文字量：${state.wordCount.prompt}\n`;
+            if (details)         p += `# 策略細節\n${details}\n`;
+
+            // 加分項目
+            if (state.requirements.length > 0) {
+                p += `# 加分要求\n`;
+                state.requirements.forEach(r => p += `- ${r.prompt}\n`);
+                p += '\n';
+            }
+
+            // 補充說明
+            if (customNotes.trim()) {
+                p += `# 補充說明\n${customNotes.trim()}\n\n`;
+            }
+
+            // 格式規範
+            if (state.format) p += `# 輸出格式\n${state.format.prompt}\n\n`;
+
+            // 輸出指令
+            p += `請輸出完整的長照簡報大綱，每張投影片需包含：標題、重點條列、視覺建議（如適用）。\n`;
+
+            // 視覺風格
+            if (state.visualStyle) {
+                p += `\n// 簡報視覺風格：採用「${state.visualStyle.label}」（${state.visualStyle.visual}）\n`;
+            }
+
+            // Google Slides 匯出指引（固定附加）
+            p += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            p += `【Gemini Canvas 操作步驟 → 匯出 Google 簡報】\n`;
+            p += `1. 在 Gemini 回應上方點擊「Canvas 模式」按鈕，切換至視覺化編輯模式\n`;
+            p += `2. 確認簡報大綱後，點擊右上角「⋮ 更多選項」\n`;
+            p += `3. 選擇「匯出至 Google 簡報（Slides）」\n`;
+            p += `4. 登入 Google 帳號後，簡報將自動建立於 Google 雲端硬碟\n`;
+            p += `5. 開啟 Google 簡報後，可進一步套用主題與精修細節\n`;
+
+            promptOutput.textContent = p.trim();
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 渲染所有選項群組
+        // ────────────────────────────────────────────────────────────
+        const renderSelections = () => {
+            selectionGroupsContainer.innerHTML = '';
+
+            // 定義所有群組
+            const groups = [
+                { label: '快速預設（一鍵套用常見情境）', key: 'quicksets', stateKey: 'quickset', isQuickset: true },
+                { label: '0. 簡報類型', key: 'types', stateKey: 'type', showToggle: true },
+                { label: '1. 角色設定', key: 'roles', stateKey: 'role' },
+                { label: '2. 邏輯架構', key: 'structures', stateKey: 'structure' },
+                { label: '3. 語氣風格', key: 'tones', stateKey: 'tone' },
+                { label: '4. 目標受眾', key: 'audiences', stateKey: 'audience' },
+                { label: '5. 加分項目（可複選）', key: 'requirements', stateKey: 'requirements', isMulti: true },
+                { label: '6. 輸出格式', key: 'formats', stateKey: 'format' },
+                { label: '7. 文字量設定', key: 'wordCounts', stateKey: 'wordCount' },
+                { label: '8. 視覺風格配色', key: 'visualStyles', stateKey: 'visualStyle' },
+            ];
+
+            groups.forEach(group => {
+                // 群組標題列
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'flex items-center justify-between mb-1.5';
+
+                const label = document.createElement('h3');
+                label.className = 'text-[22pt] font-bold text-gray-400 uppercase tracking-widest leading-none';
+                label.textContent = group.label;
+                groupHeader.appendChild(label);
+
+                // 智慧建議開關（只在「簡報類型」群組顯示）
+                if (group.showToggle) {
+                    const toggleLabel = document.createElement('label');
+                    toggleLabel.className = 'smart-toggle text-[22pt]';
+                    toggleLabel.innerHTML = `<input type="checkbox" ${state.smartEnabled ? 'checked' : ''}> 啟用智慧建議`;
+                    toggleLabel.querySelector('input').onchange = (e) => {
+                        state.smartEnabled = e.target.checked;
+                    };
+                    groupHeader.appendChild(toggleLabel);
+                }
+
+                // 按鈕容器
+                const grid = document.createElement('div');
+                grid.className = 'flex flex-wrap gap-1.5 mb-3 items-center';
+
+                // 渲染各選項按鈕
+                CONFIG[group.key].forEach(opt => {
+                    let isActive;
+                    if (group.isMulti) {
+                        isActive = state.requirements.some(r => r.id === opt.id);
+                    } else {
+                        isActive = state[group.stateKey]?.id === opt.id;
+                    }
+
+                    const btn = document.createElement('button');
+                    btn.className = `selection-btn rounded-lg border transition-all ${isActive ? 'active shadow-sm' : ''}`;
+                    btn.textContent = opt.label;
+
+                    btn.onclick = () => {
+                        if (group.isQuickset) {
+                            // 快速預設：套用整套設定
+                            const typeObj = CONFIG.types.find(t => t.id === opt.typeId);
+                            if (typeObj) {
+                                state.type = typeObj;
+                                applySmartDefaults(opt.typeId);
+                            }
+                            state.quickset = opt;
+                        } else if (group.key === 'types') {
+                            if (state.type?.id === opt.id) {
+                                state.type = null;
+                            } else {
+                                state.type = opt;
+                                applySmartDefaults(opt.id);
+                            }
+                            state.quickset = null;
+                        } else if (group.isMulti) {
+                            const idx = state.requirements.findIndex(r => r.id === opt.id);
+                            if (idx > -1) state.requirements.splice(idx, 1);
+                            else state.requirements.push(opt);
+                        } else {
+                            state[group.stateKey] = state[group.stateKey]?.id === opt.id ? null : opt;
+                        }
+                        renderSelections();
+                        buildPrompt();
+                    };
+
+                    grid.appendChild(btn);
+                });
+
+                // 快速預設群組末尾加「清除所有選取」按鈕
+                if (group.isQuickset) {
+                    const clearBtn = document.createElement('button');
+                    clearBtn.className = 'selection-btn rounded-lg border clear-btn transition-all active:scale-95 ml-auto';
+                    clearBtn.textContent = '清除所有選取';
+                    clearBtn.onclick = () => {
+                        state = {
+                            smartEnabled: state.smartEnabled,
+                            quickset: null, type: null, role: null,
+                            structure: null, tone: null, audience: null,
+                            format: null, wordCount: null, visualStyle: null,
+                            requirements: [], pageCount: 12,
+                        };
+                        titleInput.value = '';
+                        customNotesInput.value = '';
+                        title = '';
+                        customNotes = '';
+                        pageCountInput.value = 12;
+                        pageCountLabel.textContent = '12 張';
+                        renderSelections();
+                        buildPrompt();
+                    };
+                    grid.appendChild(clearBtn);
+                }
+
+                const groupEl = document.createElement('div');
+                groupEl.appendChild(groupHeader);
+                groupEl.appendChild(grid);
+                selectionGroupsContainer.appendChild(groupEl);
+            });
+
+            // 重新初始化 Lucide 圖示
+            if (window.lucide) lucide.createIcons();
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 事件綁定
+        // ────────────────────────────────────────────────────────────
+
+        // 主題輸入
+        titleInput.oninput = (e) => { title = e.target.value; buildPrompt(); };
+
+        // 補充說明輸入
+        customNotesInput.oninput = (e) => { customNotes = e.target.value; buildPrompt(); };
+
+        // 投影片張數滑桿
+        pageCountInput.oninput = (e) => {
+            state.pageCount = parseInt(e.target.value);
+            pageCountLabel.textContent = `${state.pageCount} 張`;
+            buildPrompt();
+        };
+
+        // 複製提示詞
+        copyBtn.onclick = () => {
+            const el = document.createElement('textarea');
+            el.value = promptOutput.textContent;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            const orig = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4 inline-block mr-1"></i> 已複製！';
+            copyBtn.style.background = '#0d9488';
+            setTimeout(() => {
+                copyBtn.innerHTML = orig;
+                copyBtn.style.background = '';
+                if (window.lucide) lucide.createIcons();
+            }, 2000);
+        };
+
+        // 重置所有設定
+        resetAllBtn.onclick = () => {
+            if (confirm('確定要重置所有設定嗎？')) location.reload();
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 左右面板拖曳調整寬度
+        // ────────────────────────────────────────────────────────────
+        const resizer   = document.getElementById('resizer');
+        const leftPanel = document.getElementById('left-panel');
+        const container = document.getElementById('container');
+        let isResizing  = false;
+
+        resizer.onmousedown = () => {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+        };
+        document.onmousemove = (e) => {
+            if (!isResizing) return;
+            const rect = container.getBoundingClientRect();
+            let w = ((e.clientX - rect.left) / rect.width) * 100;
+            if (w >= 20 && w <= 80) leftPanel.style.flexBasis = `${w}%`;
+        };
+        document.onmouseup = () => {
+            isResizing = false;
+            document.body.style.cursor = 'default';
+        };
+
+        // ────────────────────────────────────────────────────────────
+        // 初始化
+        // ────────────────────────────────────────────────────────────
+        renderSelections();
+        buildPrompt();
+        if (window.lucide) lucide.createIcons();
+    </script>
+
+</body>
+</html>
